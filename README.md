@@ -2,8 +2,7 @@
 
 ## Update
 * We have already downloaded a bunch of filings (424B5s and 8-Ks mainly)
-* We have already defined the rules to parse the risk factors off of one 424B5 filing. Now we are working on generalizing the functions.
-* The approach taken only works for the 424B5 filings, since it is based on the title headers of the risk factors section. We need to work on parsing the 8-K filings, because their headers are different. 
+* We already managed to define the functions to parse all the 424B5 filings. It works, but the text contains all the html tags. So now we are working on how to clean the html. 
 
 
 
