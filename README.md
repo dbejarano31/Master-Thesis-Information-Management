@@ -1,16 +1,10 @@
 # Master-Thesis-Information-Management
 
 ## Update
-* We already managed to generalize the functions to parse the 424B5 and 8-K filings. There are still some filings with a very different format that don't work, but we are working on it. <b> See from extracting risk factors on. </b>
-* The functions to extract the stock price data are ready.
-* We consolidated the training data in a single dataframe.
-
-## Next steps
-* Mock-train a BERT model to familiarize ourselves with the pre-processing tasks. 
-* Define whether we are going to use a domain-specific or general purpose language corpus.
-* Pre-process training data and/or language corpus.
+We are now working on setting up a Longformer model for the SEC filing classification task. This because of BERT's limitation when it comes to sequences with a length > 512 tokens. In Longformer3_0.ipynb you can find the code, but our Colab GPU runs out of memory because of the size of the model. I read [here] (https://github.com/allenai/longformer/issues/41) that using fp16 could help me save memory, but I haven't figured out where exactly to set it up in my code.
+We are also working on the exploratory analysis of the stock prices to determine a more robust way for identifying price deviations.
 
 
-
-
+## File notes
+The data used for the models in the repo is [here] (https://raw.githubusercontent.com/dbejarano31/Master-Thesis-Information-Management/main/consolidated-data).
 
