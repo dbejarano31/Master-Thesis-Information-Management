@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import datefinder
 
-
+base_url = 'https://www.sec.gov{}'
 
 sess = requests.session()
 cach = CacheControl(sess)
@@ -318,7 +318,7 @@ def get_8k_info(headers, soup):
 def get_8k(soup):
     headers = get_8k_headers(soup)
     delims = get_8k_delims(soup)
-    paragraphs = get_8k_info2(headers, soup)
+    paragraphs = get_8k_info(headers, soup)
     if paragraphs:
         return paragraphs
     
@@ -329,40 +329,159 @@ def get_dates(soup):
         matches = datefinder.find_dates(string)
         try:
             for match in matches:
-                date.append(match)
+                if match.date().year in [2020, 2021] and match.date().strftime('%Y-%m-%d')< datetime.today().strftime('%Y-%m-%d'):
+                    date.append(match)
         except:
             pass
     return date[1]
+
+def parse10k(filing):
+    raw_10k = filing.text
+    ##define delimiter patterns to get the regex iterator
+    doc_start_pattern = re.compile(r'<DOCUMENT>')
+    doc_end_pattern = re.compile(r'</DOCUMENT')
+    type_pattern = re.compile(r'<TYPE>[^\n]+')
+
+    doc_start_is = [x.end() for x in doc_start_pattern.finditer(raw_10k)]
+    doc_end_is = [x.start() for x in doc_end_pattern.finditer(raw_10k)]
+
+    doc_types = [x[len('<TYPE>'):] for x in type_pattern.findall(raw_10k)]
+
+    document = {}
+    ##selecting only the 10-K section
+    for doc_type, doc_start, doc_end in zip(doc_types, doc_start_is, doc_end_is):
+        if doc_type == '10-K':
+            document[doc_type] = raw_10k[doc_start:doc_end]
+
+    #defining patterns for the delimiting sections
+    regex = re.compile(r'(>Item(\s|&#160;|&nbsp;)(1A|1B|7A|7|8)\.{0,1})|(ITEM\s(1A|1B|7A|7|8))')
+    
+    try:
+        matches = regex.finditer(document['10-K'])
+    
+        test_df = pd.DataFrame([(x.group(), x.start(), x.end()) for x in matches])
+
+        test_df.columns = ['item', 'start', 'end']
+        test_df['item'] = test_df.item.str.lower()
+
+        test_df.replace('&#160;',' ',regex=True,inplace=True)
+        test_df.replace('&nbsp;',' ',regex=True,inplace=True)
+        test_df.replace(' ','',regex=True,inplace=True)
+        test_df.replace('\.','',regex=True,inplace=True)
+        test_df.replace('>','',regex=True,inplace=True)
+
+        ##df contains duplicate sections because it also matches the index
+        pos_dat = test_df.sort_values('start', ascending=True).drop_duplicates(subset=['item'], keep='last')
+        pos_dat.set_index('item', inplace=True)
+
+        item_1a_raw = document['10-K'][pos_dat['start'].loc[pos_dat.index[0]]:pos_dat['start'].loc[pos_dat.index[1]]]
+
+        item_1a_content = BeautifulSoup(item_1a_raw, 'lxml')
+
+        item_1a_cleaned = item_1a_content.get_text("\n\n")
+        
+    except:
+        item_1a_cleaned = 'Nope'
+    return cleanhtml(item_1a_cleaned)
+
+
+
+def get_10k(link):
+
+    try:
+        docs = get_filing_documents(base_url.format(link))
+        doc_link = docs.loc[docs.Description == 'Complete submission text file', 'Document'].values[0]
+        r = requests.get(base_url.format(doc_link))
+        result = parse10k(r)
+    except:
+        result = 'Nope'
+
+    return result
             
 
-def previous_close_and_next_open(tickers, dates):
-    """This function obtains, for each pair of ticker and date, the closing price of the ticker during the 
-    day before the given date and the opening price of the ticker for the day next to the reference date.
+def delta_days_and_current(tickers, dates, delta=7):
+    """This function obtains, for each pair of ticker and date, the closing price of the ticker delta days
+    after the given date and the closing price of the ticker for the day of the reference date.
     
     For the inputs:
-    tickers: List of tickers, each represented by a string
-    dates: List of dates, each represented in the format %Y-%m-%d (2010-01-24)
+    tickers: List of tickers, each represented by a string. Same length as dates!
+    dates: List of dates, each represented in the format %Y-%m-%d (e.g. 2010-01-24)
+    delta: Number of days after the reference date from which to obtain the previous price. It can also be a list,
+        with as many deltas as desired.
     
-    The output is a pandas dataframe, with as many rows as specified tickers, and columns Reference Date, Previous Close,
-    and Next Open."""
+    The output is a pandas dataframe, with as many rows as specified tickers, and columns Reference Date, 
+    Previous Close, and Current Close."""
     
-    results = pd.DataFrame(columns=['Ticker', "Reference Date", "Previous Close", "Next Open"]).set_index('Ticker')
+
+    if type(delta) == int:
+        delta = [delta]
+    
+    results = {field: [] for field in 
+               ['Ticker', "Reference Date", "Current Close"] + \
+               [f"Close_Price_{abs(d)}_Days_Before" for d in delta if d < 0] + \
+               [f"Close_Price_{d}_Days_Later" for d in delta if d > 0]}
+    
+    #This unelegant move is because im lazy
+    delta = [-d for d in delta]
+        
     for i, t in enumerate(tickers):
         #If date falls in weekends, take Friday and Monday
-        extra_add = extra_sub = 0
+        extra_add = 0
         if datetime.strptime(dates[i], '%Y-%m-%d').isoweekday() == 6:
-            extra_add = 1
+            extra_add = -1
         elif datetime.strptime(dates[i], '%Y-%m-%d').isoweekday() == 7:
-            extra_sub = 1
-                
-        yesterday = datetime.strptime(dates[i], '%Y-%m-%d') - timedelta(days=1+ extra_sub)
-        tomorrow = datetime.strptime(dates[i], '%Y-%m-%d') + timedelta(days=1 + extra_add)
+            extra_add = 1
         
-        data = yf.download(t, start=yesterday + timedelta(days=1), end=tomorrow + timedelta(days=1))
+        current = datetime.strptime(dates[i], '%Y-%m-%d') + timedelta(days=extra_add)
         
-        previous_close = data.iloc[0]['Close']
-        next_open = data.iloc[-1]['Open']
+        if max(delta) >= 0:
+            max_previous = current + timedelta(days=-max(delta))
+            if min(delta) > 0:
+                max_next = current
+            else:
+                max_next = current + timedelta(days=-min(delta))    
+        else:
+            max_next = current + timedelta(days=-min(delta)) 
+            max_previous = current
+        
+        # this is the try/except block I added during the call
+        try:
+            data = yf.download(t, start=max_previous + timedelta(days=-2), end=max_next + timedelta(days=2))
+        except:
+            pass
+        
+        ## here I turned current_close to an array to avoid the index problem
+        current_close = data.loc[data.index == current, 'Close'].values
+        try: # we are going to try to convert it from array to float
+            current_close = current_close[0].astype(float)
+        except:
+            pass # sometimes the output is of size 0, so in that case we do nothing
+        
+        #print(data[['Close']])
+        results['Ticker'].append(t)
+        results["Reference Date"].append(current)
+        results["Current Close"].append(current_close)
+        
+        for d in delta:
+            if d != 0:
+                previous = current + timedelta(days=-d)
 
-        single = pd.DataFrame({"Reference Date":dates[i], "Previous Close":previous_close, "Next Open":next_open}, index=[t])
-        results = results.append(single)
+                #If date falls in weekends, take Friday and Monday
+                if previous.isoweekday() == 6:
+                    previous += timedelta(days=-1)
+                elif previous.isoweekday() == 7:
+                    previous += timedelta(days=+1)
+                
+                previous_close = data.loc[data.index == previous, 'Close'].values
+                try:
+                    previous_close = previous_close[0].astype(float)
+                except:
+                    pass
+
+                if d > 0:
+                    results[f"Close_Price_{d}_Days_Before"].append(previous_close)
+                elif d < 0:
+                    results[f"Close_Price_{abs(d)}_Days_Later"].append(previous_close)
+
+    results = pd.DataFrame(results).set_index('Ticker')
     return results
