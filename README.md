@@ -1,10 +1,10 @@
 # Master-Thesis-Information-Management
 
 ## Update
-We are now working on setting up a Longformer model for the SEC filing classification task. This because of BERT's limitation when it comes to sequences with a length > 512 tokens. In Longformer3_0.ipynb you can find the code, but our Colab GPU runs out of memory because of the size of the model. I read [here](https://github.com/allenai/longformer/issues/41) that using fp16 could help me save memory, but I haven't figured out where exactly to set it up in my code.
-We are also working on the exploratory analysis of the stock prices to determine a more robust way for identifying price deviations.
+We have run both [BERT](https://github.com/dbejarano31/Master-Thesis-Information-Management/blob/main/BERT_HF.ipynb) and [FinBERT](https://github.com/dbejarano31/Master-Thesis-Information-Management/blob/main/finBERT_HF.ipynb) on a 1350 filing dataset of 10-K, 8-K and 424B5 filings. 
+We now are working on refining our target variable labelling approach, for more detail see the final draft. We will also start implementing the sliding window approach now that we have concretely defined the framework used for the models, and established the pipeline from the tokenization of the data, to the reporting of performance metrics of the models. 
 
 
 ## File notes
-The data used for the models in the repo is [here](https://raw.githubusercontent.com/dbejarano31/Master-Thesis-Information-Management/main/consolidated-data).
+The data used for the models in the repo is [here](https://drive.google.com/file/d/1o1BMTTU9YNPATL8x93l0N-h6sTZxLyDo/view?usp=sharing).
 
